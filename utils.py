@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -107,6 +108,64 @@ def power_spectrum(x, sr, rfft=True, dbspl=True):
     return fxx, pxx
 
 
+def complex_tone(
+    sr=50e3,
+    dur=50e-3,
+    freq=220,
+    phase=0,
+    amplitude=1,
+):
+    """
+    Generate a tone with the specified parameters.
+    """
+    freq = np.asarray(freq).reshape([-1])
+    phase = np.asarray(phase).reshape([-1])
+    amplitude = np.asarray(amplitude).reshape([-1])
+    assert freq.max() < sr / 2
+    assert freq.shape == phase.shape
+    assert freq.shape == amplitude.shape
+    t = np.arange(0, dur, 1 / sr)
+    x = np.zeros_like(t)
+    for f, p, a in zip(freq, phase, amplitude):
+        x += a * np.sin(2 * np.pi * f * t + p)
+    return x
+
+
+def harmonic_complex_tone(
+    sr=50e3,
+    dur=50e-3,
+    f0=220,
+    harmonics=np.arange(1, 11),
+    phase="sine",
+    amplitudes=None,
+):
+    """
+    Generate a harmonic complex tone with the specified parameters.
+    """
+    freq = f0 * np.asarray(harmonics).reshape([-1])
+    if isinstance(phase, str):
+        if phase.lower() == "sine":
+            phase = np.zeros_like(freq)
+        elif phase.lower() == "cosine":
+            phase = (np.pi / 2) * np.ones_like(freq)
+        elif phase.lower() == "rand":
+            phase = 2 * np.pi * np.random.randn(*freq.shape)
+        else:
+            raise ValueError(f"unrecognized {phase=}")
+    if amplitudes is None:
+        amplitude = np.ones_like(freq)
+    else:
+        amplitude = np.ones_like(freq) * np.asarray(amplitudes)
+    x = complex_tone(
+        sr=sr,
+        dur=dur,
+        freq=freq,
+        phase=phase,
+        amplitude=amplitude,
+    )
+    return x
+
+
 def format_axes(
     ax,
     str_title=None,
@@ -181,3 +240,88 @@ def format_axes(
         ax.spines[spine_key].set_visible(False)
 
     return ax
+
+
+def make_power_spectrum_plot(x, sr, figsize=None, **kwargs):
+    """ """
+    fig, ax = plt.subplots(figsize=figsize)
+    if x.ndim == 1:
+        x = x[None, ...]
+    msg = "expected input shape [timesteps] or [batch, timesteps]"
+    assert x.ndim == 2, msg
+    for itr in range(x.shape[0]):
+        fxx, pxx = power_spectrum(x[itr], sr=sr)
+        ax.plot(fxx, pxx)
+    kwargs_format_axes = {
+        "str_xlabel": "Frequency (Hz)",
+        "str_ylabel": "Power (dB)",
+        "xscale": "log",
+        "yscale": "linear",
+        "xlimits": [10, sr / 2],
+        "ylimits": [-60, None],
+    }
+    kwargs_format_axes.update(kwargs)
+    ax = format_axes(ax, **kwargs_format_axes)
+    return fig, ax
+
+
+def make_spectrogram_plot(
+    x,
+    sr,
+    nfft=1024,
+    noverlap=None,
+    vmin=None,
+    vmax=None,
+    cmap="magma",
+    figsize=None,
+    str_title=None,
+    **kwargs,
+):
+    """
+    Generate figure with a spectrogram
+    and a time-aligned sound waveform.
+    """
+    fig, ax_arr = plt.subplots(
+        nrows=2,
+        ncols=1,
+        sharex=True,
+        figsize=figsize,
+        gridspec_kw={
+            "hspace": 0,
+            "height_ratios": [1, 5],
+        },
+        layout="constrained",
+    )
+    t = np.arange(0, len(x)) / sr
+    ax_arr[0].plot(t, x, color="k", lw=1)
+    kwargs_format_axes = {
+        "str_title": str_title,
+        "xticks": [],
+        "yticks": [],
+        "ylimits": [
+            np.min(x) - (np.max(x) - np.min(x)) / 5,
+            np.max(x) + (np.max(x) - np.min(x)) / 5,
+        ],
+        "major_tick_params_kwargs_update": {"length": 0},
+    }
+    ax_arr[0] = format_axes(ax_arr[0], **kwargs_format_axes)
+    ax_arr[0].set_ylabel("Signal", rotation=0, ha="right")
+    spectrum, freqs, t, im = ax_arr[1].specgram(
+        x,
+        NFFT=nfft,
+        noverlap=nfft - 1 if noverlap is None else noverlap,
+        Fs=sr,
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+    )
+    fig.colorbar(im, label="Intensity (dB)", pad=0.025)
+    kwargs_format_axes = {
+        "str_xlabel": "Time (s)",
+        "str_ylabel": "Frequency (Hz)",
+        "xlimits": [t[0], t[-1]],
+        "ylimits": [freqs[0], freqs[-1]],
+    }
+    kwargs_format_axes.update(kwargs)
+    ax_arr[1] = format_axes(ax_arr[1], **kwargs_format_axes)
+    return fig, ax_arr
