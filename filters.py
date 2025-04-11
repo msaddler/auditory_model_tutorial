@@ -12,14 +12,14 @@ def gammatone_filterbank_fir(
     bw_mult=None,
 ):
     """
-    Returns impulse responses of a Gammatone filter bank.
+    Returns finite impulse responses of a Gammatone filter bank.
 
     Args
     ----
     sr (float): Sampling rate in Hz
     fir_dur (float): Duration of FIR in seconds
     cfs (float or np.ndarray): Center frequencies with shape (n_filters,)
-    order (int):  Filter order
+    order (int): Filter order
     bw_mult (float or np.ndarray or None): Bandwidth scaling factor
 
     Returns
@@ -54,7 +54,7 @@ def gammatone_filterbank_fir(
 
 def ihc_lowpass_filter_fir(sr, fir_dur, cutoff=3e3, order=7):
     """
-    Returns finite response of IHC lowpass filter from
+    Returns finite impulse response of IHC lowpass filter from
     bez2018model/model_IHC_BEZ2018.c
     """
     n_taps = int(sr * fir_dur)

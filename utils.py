@@ -414,11 +414,6 @@ def plot_nervegram(
 
 
 def make_nervegram_plot(
-    ax_arr,
-    ax_idx_waveform=None,
-    ax_idx_spectrum=None,
-    ax_idx_nervegram=None,
-    ax_idx_excitation=None,
     waveform=None,
     nervegram=None,
     sr_waveform=None,
@@ -429,6 +424,11 @@ def make_nervegram_plot(
     treset=True,
     vmin=None,
     vmax=None,
+    figsize=(9, 5),
+    ax_idx_waveform=1,
+    ax_idx_spectrum=3,
+    ax_idx_nervegram=4,
+    ax_idx_excitation=5,
     interpolation="none",
     erb_freq_axis=True,
     nxticks=6,
@@ -441,7 +441,17 @@ def make_nervegram_plot(
     Generate figure with auditory nerve representation flanked
     by stimulus waveform, power spectrum, and excitation pattern.
     """
-    # Axes are tracked in flattened array
+    fig, ax_arr = plt.subplots(
+        nrows=2,
+        ncols=3,
+        figsize=figsize,
+        gridspec_kw={
+            "wspace": 0.15,
+            "hspace": 0.15,
+            "width_ratios": [1, 6, 1],
+            "height_ratios": [1, 4],
+        },
+    )
     ax_arr = np.array([ax_arr]).reshape([-1])
     ax_idx_list = []
 
@@ -557,8 +567,9 @@ def make_nervegram_plot(
             **kwargs_format_axes,
         )
 
-    # Clear unused axes in ax_arr
+    # Clear unused axes in ax_arr and align x-axis labels
     for ax_idx in range(ax_arr.shape[0]):
         if ax_idx not in ax_idx_list:
             ax_arr[ax_idx].axis("off")
-    return ax_arr
+    fig.align_xlabels(ax_arr)
+    return fig, ax_arr

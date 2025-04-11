@@ -8,7 +8,7 @@ import utils
 class FIRFilterbank(torch.nn.Module):
     def __init__(self, fir, dtype=torch.float32, **kwargs_conv1d):
         """
-        FIR filterbank
+        Finite impulse response (FIR) filterbank
 
         Args
         ----
