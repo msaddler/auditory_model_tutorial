@@ -266,6 +266,8 @@ def make_spectrogram_plot(
     sr,
     nfft=1024,
     noverlap=None,
+    mode="default",
+    scale="default",
     vmin=None,
     vmax=None,
     cmap="magma",
@@ -303,9 +305,11 @@ def make_spectrogram_plot(
     ax_arr[0].set_ylabel("Signal", rotation=0, ha="right")
     spectrum, freqs, t, im = ax_arr[1].specgram(
         x,
-        NFFT=nfft,
-        noverlap=nfft - 1 if noverlap is None else noverlap,
         Fs=sr,
+        NFFT=nfft,
+        mode=mode,
+        noverlap=nfft - 1 if noverlap is None else noverlap,
+        scale=scale,
         vmin=vmin,
         vmax=vmax,
         cmap=cmap,
