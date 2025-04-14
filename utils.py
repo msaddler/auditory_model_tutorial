@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker
 import numpy as np
+import scipy.signal
 
 
 def rms(x):
@@ -74,31 +75,28 @@ def erbspace(start, stop, num):
     return erb2freq(np.linspace(freq2erb(start), freq2erb(stop), num=num))
 
 
-def power_spectrum(x, sr, rfft=True, dbspl=True):
+def periodogram(x, sr, db=True, p_ref=20e-6, scaling="spectrum", **kwargs):
     """
-    Helper function for computing power spectrum of sound wave.
+    Compute power spectrum (default) or power spectral density of signal.
 
     Args
     ----
     x (np.ndarray): input waveform (Pa)
     sr (int): sampling rate (Hz)
-    rfft (bool): if True, only positive half of power spectrum is returned
-    dbspl (bool): if True, power spectrum has units dB re 20e-6 Pa
+    db (bool): convert output to dB
+    p_ref (float): reference pressure for dB conversion (20e-6 Pa for dB SPL)
+    scaling (str): "spectrum" (units Pa^2) or "density" (units Pa^2 / Hz)
+    kwargs (keyword arguments): passed directly to scipy.signal.periodogram
 
     Returns
     -------
     fxx (np.ndarray): frequency vector (Hz)
-    pxx (np.ndarray): power spectrum (Pa^2 or dB SPL)
+    pxx (np.ndarray): Power spectrum (dB) or power spectral density (dB / Hz)
     """
-    if rfft:
-        # Power is doubled since rfft computes only positive half of spectrum
-        pxx = 2 * np.square(np.abs(np.fft.rfft(x) / len(x)))
-        fxx = np.fft.rfftfreq(len(x), d=1 / sr)
-    else:
-        pxx = np.square(np.abs(np.fft.fft(x) / len(x)))
-        fxx = np.fft.fftfreq(len(x), d=1 / sr)
-    if dbspl:
-        pxx = 10.0 * np.log10(pxx / np.square(20e-6))
+    fxx, pxx = scipy.signal.periodogram(x=x, fs=sr, scaling=scaling, **kwargs)
+    if db:
+        p_ref = 1.0 if p_ref is None else p_ref
+        pxx = 10.0 * np.log10(pxx / np.square(p_ref))
     return fxx, pxx
 
 
@@ -144,6 +142,11 @@ def harmonic_complex_tone(
             phase = (np.pi / 2) * np.ones_like(freq)
         elif phase.lower() == "rand":
             phase = 2 * np.pi * np.random.randn(*freq.shape)
+        elif phase.lower() in ["alt", "alternating"]:
+            phase = (np.pi / 2) * np.ones_like(freq)
+            phase[::2] = 0
+        elif phase.lower() in ["sch", "schroeder"]:
+            phase = (np.pi / 2) + (np.pi * np.square(freq) / len(freq))
         else:
             raise ValueError(f"unrecognized {phase=}")
     if amplitudes is None:
@@ -236,19 +239,18 @@ def format_axes(
     return ax
 
 
-def make_power_spectrum_plot(x, sr, figsize=None, **kwargs):
-    """ """
+def make_periodogram_plot(x, sr, figsize=None, **kwargs):
+    """
+    Plot power spectrum of input signal(s).
+    """
     fig, ax = plt.subplots(figsize=figsize)
-    if x.ndim == 1:
-        x = x[None, ...]
-    msg = "expected input shape [timesteps] or [batch, timesteps]"
-    assert x.ndim == 2, msg
-    for itr in range(x.shape[0]):
-        fxx, pxx = power_spectrum(x[itr], sr=sr)
-        ax.plot(fxx, pxx)
+    fxx, pxx = periodogram(x, sr=sr)
+    if pxx.ndim == 2:
+        pxx = pxx.T
+    ax.plot(fxx, pxx)
     kwargs_format_axes = {
         "str_xlabel": "Frequency (Hz)",
-        "str_ylabel": "Power (dB)",
+        "str_ylabel": "Power (dB SPL)",
         "xscale": "log",
         "yscale": "linear",
         "xlimits": [10, sr / 2],
@@ -272,8 +274,7 @@ def make_spectrogram_plot(
     **kwargs,
 ):
     """
-    Generate figure with a spectrogram
-    and a time-aligned sound waveform.
+    Plot spectrogram of input signal alongside time-aligned waveform.
     """
     fig, ax_arr = plt.subplots(
         nrows=2,
@@ -344,7 +345,7 @@ def plot_nervegram(
     **kwargs_format_axes,
 ):
     """
-    Helper function to visualize simulated auditory nerve representation.
+    Plot simulated auditory nerve representation on the provided axes.
     """
     # Trim nervegram if tmin and tmax are specified
     nervegram = np.squeeze(nervegram)
@@ -438,8 +439,8 @@ def make_nervegram_plot(
     **kwargs_format_axes,
 ):
     """
-    Generate figure with auditory nerve representation flanked
-    by stimulus waveform, power spectrum, and excitation pattern.
+    Plot simulated auditory nerve representation alongside sound waveform,
+    stimulus power spectrum, and time-averaged excitation pattern.
     """
     fig, ax_arr = plt.subplots(
         nrows=2,
@@ -485,7 +486,7 @@ def make_nervegram_plot(
     # Plot stimulus power spectrum
     if ax_idx_spectrum is not None:
         ax_idx_list.append(ax_idx_spectrum)
-        fxx, pxx = power_spectrum(waveform, sr_waveform)
+        fxx, pxx = periodogram(waveform, sr_waveform)
         if cfs is not None:
             msg = "Frequency axes will not align when highest CF exceeds Nyquist"
             assert np.max(cfs) <= np.max(fxx), msg
