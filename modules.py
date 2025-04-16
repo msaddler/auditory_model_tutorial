@@ -8,7 +8,7 @@ import utils
 class FIRFilterbank(torch.nn.Module):
     def __init__(self, fir, dtype=torch.float32, **kwargs_conv1d):
         """
-        Finite impulse response (FIR) filterbank
+        Finite impulse response (FIR) filterbank.
 
         Args
         ----
@@ -38,7 +38,7 @@ class FIRFilterbank(torch.nn.Module):
 
     def forward(self, x, batching=False):
         """
-        Filter input signal
+        Filter input signal.
 
         Args
         ----
@@ -79,7 +79,10 @@ class GammatoneFilterbank(FIRFilterbank):
         dtype=torch.float32,
         **kwargs,
     ):
-        """ """
+        """
+        Gammatone cochlear filterbank, applied by convolution
+        with a set of finite impulse responses.
+        """
         fir = filters.gammatone_filterbank_fir(
             sr=sr,
             fir_dur=fir_dur,
@@ -99,7 +102,10 @@ class IHCLowpassFilter(FIRFilterbank):
         order=7,
         dtype=torch.float32,
     ):
-        """ """
+        """
+        Inner hair cell low-pass filter, applied by convolution
+        with a finite impulse response.
+        """
         fir = filters.ihc_lowpass_filter_fir(
             sr=sr_input,
             fir_dur=fir_dur,
@@ -123,7 +129,10 @@ class HalfCosineFilterbank(torch.nn.Module):
         include_highpass=False,
         include_lowpass=False,
     ):
-        """ """
+        """
+        Half-cosine bandpass filterbank, applied by
+        multiplication in the frequency domain.
+        """
         super().__init__()
         self.sr = sr
         self.cf_low = cf_low
@@ -244,3 +253,115 @@ class GradientClippedPower(torch.autograd.Function):
         grad = ctx.power * torch.pow(input, ctx.power - 1)
         grad = torch.clamp(grad, min=None, max=ctx.clip_value)
         return grad_output * grad, None, None
+
+
+class GradientStableSigmoid(torch.autograd.Function):
+    """
+    Custom autograd Function for sigmoid function with stable
+    gradient (avoid NaN due to overflow in rate-level function).
+    """
+
+    @staticmethod
+    def forward(ctx, x, k, x0):
+        ctx.save_for_backward(x, k, x0)
+        return 1.0 / (1.0 + torch.exp(-k * (x - x0)))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, k, x0 = ctx.saved_tensors
+        grad = k * torch.exp(-k * (x - x0))
+        grad = grad / (torch.exp(-k * (x - x0)) + 1.0) ** 2
+        grad = torch.nan_to_num(grad, nan=0.0, posinf=None, neginf=None)
+        return grad_output * grad, None, None
+
+
+class SigmoidRateLevelFunction(torch.nn.Module):
+    def __init__(
+        self,
+        rate_spont=0.0,
+        rate_max=250.0,
+        threshold=12.0,
+        dynamic_range=40.0,
+        dynamic_range_interval=0.95,
+        compression_power_default=0.3,
+        compression_power=0.3,
+        dtype=torch.float32,
+    ):
+        """
+        Sigmoid function to convert sound pressure in Pa to auditory nerve firing
+        rates in spikes per second. This function can incorporate a compressive
+        nonlinearity and crudely account for audibility and saturation limits.
+
+        Args
+        ----
+        rate_spont (float): spontaneous firing rate in spikes/s
+        rate_max (float): maximum firing rate in spikes/s
+        threshold (float): auditory nerve fiber threshold for spiking (dB SPL)
+        dynamic_range (float): dynamic range over which firing rate changes (dB)
+        dynamic_range_interval (float): determines proportion of firing rate change
+            within dynamic_range (default is 95%)
+        compression_power_default (float): compression_power used to set rate-level
+            function parameters (use 0.3 to model normal hearing)
+        compression_power (float or frequency-specific array): compression_power
+            to apply to inputs (range: 0.3 = normal to 1.0 = linearized)
+        dtype (torch.dtype): data type for inputs and internal tensors
+        """
+        super().__init__()
+        self.rate_spont = rate_spont
+        self.rate_max = rate_max
+        self.threshold = threshold
+        self.dynamic_range = dynamic_range
+        self.dynamic_range_interval = dynamic_range_interval
+        self.compression_power_default = compression_power_default
+        shift = 20 * np.log10(20e-6 ** (compression_power_default - 1))
+        adjusted_threshold = threshold * compression_power_default + shift
+        adjusted_dynamic_range = dynamic_range * compression_power_default
+        y_threshold = (1 - dynamic_range_interval) / 2
+        self.register_buffer(
+            "k",
+            torch.as_tensor(
+                np.log((1 / y_threshold) - 1) / (adjusted_dynamic_range / 2),
+                dtype=dtype,
+            ),
+        )
+        self.register_buffer(
+            "x0",
+            torch.as_tensor(
+                adjusted_threshold - (np.log((1 / y_threshold) - 1) / (-self.k)),
+                dtype=dtype,
+            ),
+        )
+        self.register_buffer(
+            "compression_power",
+            torch.as_tensor(
+                compression_power,
+                dtype=dtype,
+            ),
+        )
+
+    def forward(self, x):
+        """
+        Apply sigmoid auditory nerve rate-level function.
+
+        Args
+        ----
+        x (torch.Tensor): half-wave rectified subbands ([batch, freq, time])
+
+        Returns
+        -------
+        x (torch.Tensor): instantaneous firing rates ([batch, freq, time])
+        """
+        assert x.ndim == 3, "expected input shape [batch, freq, time]"
+        x = GradientClippedPower.apply(
+            x,
+            self.compression_power.view(1, -1, 1),
+            1.0,
+        )
+        x = 20.0 * torch.log(x / 20e-6) / np.log(10)
+        x = GradientStableSigmoid.apply(
+            x,
+            self.k,
+            self.x0,
+        )
+        x = self.rate_spont + (self.rate_max - self.rate_spont) * x
+        return x
