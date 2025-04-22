@@ -12,44 +12,39 @@ class FIRFilterbank(torch.nn.Module):
 
         Args
         ----
-        fir (list or np.ndarray or torch.Tensor):
-            Filter coefficients. Shape (n_taps,) or (n_filters, n_taps)
-        dtype (torch.dtype):
-            Data type to cast `fir` to in case it is not a `torch.Tensor`
-        kwargs_conv1d (kwargs):
-            Keyword arguments passed on to torch.nn.functional.conv1d
-            (must not include `groups`, which is used for batching)
+        fir (array_like): filter impulse response with shape
+            [n_taps] or [n_filters, n_taps]
+        dtype (torch.dtype): data type to cast `fir` to if `fir`
+            is not a `torch.Tensor`
+        kwargs_conv1d (kwargs): keyword arguments passed on to
+            torch.nn.functional.conv1d (must not include `groups`,
+            which is used for batching)
         """
         super().__init__()
         if not isinstance(fir, (list, np.ndarray, torch.Tensor)):
-            raise TypeError(
-                "fir must be list, np.ndarray or torch.Tensor, got "
-                f"{fir.__class__.__name__}"
-            )
+            raise TypeError(f"unrecognized {type(fir)=}")
         if isinstance(fir, (list, np.ndarray)):
             fir = torch.tensor(fir, dtype=dtype)
         if fir.ndim not in [1, 2]:
-            raise ValueError(
-                "fir must be one- or two-dimensional with shape (n_taps,) or "
-                f"(n_filters, n_taps), got shape {fir.shape}"
-            )
+            raise ValueError(f"invalid {fir.shape=}")
         self.register_buffer("fir", fir)
         self.kwargs_conv1d = kwargs_conv1d
 
     def forward(self, x, batching=False):
         """
-        Filter input signal.
+        Apply filterbank along the time axis (dim=-1) via convolution
+        in the time domain (torch.nn.functional.conv1d).
 
         Args
         ----
-        x (torch.Tensor): Input signal
-        batching (bool):
-            If `True`, the input is assumed to have shape (..., n_filters, time)
-            and each channel is filtered with its own filter
+        x (torch.Tensor): input signal
+        batching (bool): if True, the input is assumed to have shape
+            [..., n_filters, time] and each channel is filtered with
+            its own filter
 
         Returns
         -------
-        y (torch.Tensor): Filtered signal
+        y (torch.Tensor): filtered signal
         """
         y = x
         if batching:
@@ -314,29 +309,29 @@ class SigmoidRateLevelFunction(torch.nn.Module):
         self.dynamic_range_interval = dynamic_range_interval
         self.compression_power_default = compression_power_default
         shift = 20 * np.log10(20e-6 ** (compression_power_default - 1))
-        adjusted_threshold = threshold * compression_power_default + shift
-        adjusted_dynamic_range = dynamic_range * compression_power_default
-        y_threshold = (1 - dynamic_range_interval) / 2
+        adjusted_threshold = torch.as_tensor(
+            threshold * compression_power_default + shift,
+            dtype=dtype,
+        )
+        adjusted_dynamic_range = torch.as_tensor(
+            dynamic_range * compression_power_default,
+            dtype=dtype,
+        )
+        y_threshold = torch.as_tensor(
+            (1 - dynamic_range_interval) / 2,
+            dtype=dtype,
+        )
         self.register_buffer(
             "k",
-            torch.as_tensor(
-                np.log((1 / y_threshold) - 1) / (adjusted_dynamic_range / 2),
-                dtype=dtype,
-            ),
+            torch.log((1 / y_threshold) - 1) / (adjusted_dynamic_range / 2),
         )
         self.register_buffer(
             "x0",
-            torch.as_tensor(
-                adjusted_threshold - (np.log((1 / y_threshold) - 1) / (-self.k)),
-                dtype=dtype,
-            ),
+            adjusted_threshold - (torch.log((1 / y_threshold) - 1) / (-self.k)),
         )
         self.register_buffer(
             "compression_power",
-            torch.as_tensor(
-                compression_power,
-                dtype=dtype,
-            ),
+            torch.as_tensor(compression_power, dtype=dtype),
         )
 
     def forward(self, x):
@@ -360,8 +355,8 @@ class SigmoidRateLevelFunction(torch.nn.Module):
         x = 20.0 * torch.log(x / 20e-6) / np.log(10)
         x = GradientStableSigmoid.apply(
             x,
-            self.k,
-            self.x0,
+            self.k.view(1, -1, 1),
+            self.x0.view(1, -1, 1),
         )
         x = self.rate_spont + (self.rate_max - self.rate_spont) * x
         return x
