@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import scipy.signal
+import soxr
 
 
 def gammatone_filterbank_fir(
@@ -57,16 +58,26 @@ def ihc_lowpass_filter_fir(sr, fir_dur, cutoff=3e3, order=7):
     Returns finite impulse response of IHC lowpass filter from
     bez2018model/model_IHC_BEZ2018.c
     """
-    n_taps = int(sr * fir_dur)
-    if n_taps % 2 == 0:
+    sr_bez2018 = 100e3
+
+    def resample(x):
+        return soxr.resample(
+            x,
+            in_rate=sr_bez2018,
+            out_rate=sr,
+            quality="VHQ",
+        )
+
+    n_taps = int(sr_bez2018 * fir_dur)
+    while len(resample(np.zeros(n_taps))) % 2 == 0:
         n_taps = n_taps + 1
     impulse = np.zeros(n_taps)
     impulse[0] = 1
     fir = np.zeros(n_taps)
     ihc = np.zeros(order + 1)
     ihcl = np.zeros(order + 1)
-    c1LP = (sr - 2 * np.pi * cutoff) / (sr + 2 * np.pi * cutoff)
-    c2LP = (np.pi * cutoff) / (sr + 2 * np.pi * cutoff)
+    c1LP = (sr_bez2018 - 2 * np.pi * cutoff) / (sr_bez2018 + 2 * np.pi * cutoff)
+    c2LP = (np.pi * cutoff) / (sr_bez2018 + 2 * np.pi * cutoff)
     for n in range(n_taps):
         ihc[0] = impulse[n]
         for i in range(order):
@@ -74,5 +85,6 @@ def ihc_lowpass_filter_fir(sr, fir_dur, cutoff=3e3, order=7):
         ihcl = ihc
         fir[n] = ihc[order]
     fir = fir * scipy.signal.windows.hann(n_taps)
+    fir = resample(fir)
     fir = fir / fir.sum()
     return fir
