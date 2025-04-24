@@ -187,9 +187,9 @@ class AudioConv1d(torch.nn.Conv1d):
 class HalfCosineFilterbank(torch.nn.Module):
     def __init__(
         self,
-        sr=50000,
-        cf_low=20e0,
-        cf_high=20e3,
+        sr=20000,
+        cf_low=10e0,
+        cf_high=10e3,
         cf_num=50,
         scale="erb",
         include_highpass=False,
@@ -346,8 +346,8 @@ class SigmoidRateLevelFunction(torch.nn.Module):
         self,
         rate_spont=0.0,
         rate_max=250.0,
-        threshold=12.0,
-        dynamic_range=40.0,
+        threshold=0.0,
+        dynamic_range=60.0,
         dynamic_range_interval=0.95,
         compression_power_default=0.3,
         compression_power=0.3,

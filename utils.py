@@ -562,12 +562,12 @@ def make_nervegram_plot(
         ax_arr[ax_idx_excitation].plot(x_exc, y_exc, **kwargs_plot)
         ax_arr[ax_idx_excitation] = format_axes(
             ax_arr[ax_idx_excitation],
-            str_xlabel="Excitation\npattern",
+            str_xlabel="Excitation\n(spikes/s)",
             xlimits=xlimits_exc,
             ylimits=ylimits_exc,
-            xticks=[],
+            xticks=xlimits_exc,
             yticks=[],
-            xticklabels=[],
+            xticklabels=np.round(xlimits_exc).astype(int),
             yticklabels=[],
             **kwargs_format_axes,
         )
