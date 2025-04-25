@@ -578,3 +578,100 @@ def make_nervegram_plot(
             ax_arr[ax_idx].axis("off")
     fig.align_xlabels(ax_arr)
     return fig, ax_arr
+
+
+def get_example_audiogram(severity="ref"):
+    """
+    Return a list of frequencies in Hz (`freq`) and hearing
+    thresholds in dB HL (`dbhl`) representing an audiogram.
+    Example audiograms sourced from the Clarity Challenge
+    (https://github.com/claritychallenge/clarity).
+    """
+    freq = [
+        125,
+        250,
+        500,
+        750,
+        1000,
+        1500,
+        2000,
+        3000,
+        4000,
+        6000,
+        8000,
+        10000,
+        12000,
+        14000,
+        16000,
+    ]
+    dict_dbhl = {
+        "ref": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "mild": [5, 10, 15, 18, 19, 22, 25, 28, 31, 35, 38, 40, 40, 45, 50],
+        "moderate": [
+            15.0,
+            20.0,
+            20.0,
+            22.5,
+            25.0,
+            30.0,
+            35.0,
+            40.0,
+            45.0,
+            50.0,
+            55.0,
+            55.0,
+            60.0,
+            65.0,
+            65.0,
+        ],
+        "moderate_severe": [19, 19, 28, 35, 40, 47, 52, 56, 58, 58, 63, 70, 75, 80, 80],
+    }
+    severity = severity.lower()
+    msg = f"{severity=} must be one of {list(dict_dbhl.keys())}"
+    assert severity in dict_dbhl.keys(), msg
+    dbhl = dict_dbhl[severity]
+    return np.asarray(freq), np.asarray(dbhl)
+
+
+def map_audiogram_to_rate_level_parameters(
+    freq=None,
+    dbhl=None,
+    cfs=None,
+    healthy_threshold=0.0,
+    healthy_dynamic_range=80.0,
+):
+    """
+    Maps an audiogram (specified by `freq` and `dbhl` to
+    sigmoid rate-level function parameters in the simplest
+    possible way. Elevated hearing thresholds are added to
+    the `healthy_threshold` and subtracted from the
+    `healthy_dynamic_range`. If a list of characteristic
+    frequencies (`cfs`) is provided, this function returns
+    thresholds and dynamic ranges linearly interpolated at
+    those cfs. If not, the function returns thresholds and
+    dynamic ranges at the audiogram frequencies.
+    """
+    dbhl = np.asarray(dbhl).reshape([-1])
+    threshold_at_freq = np.clip(
+        a=healthy_threshold + dbhl,
+        a_min=healthy_threshold,
+        a_max=healthy_threshold + healthy_dynamic_range,
+    )
+    dynamic_range_at_freq = np.clip(
+        a=healthy_dynamic_range - dbhl,
+        a_min=0,
+        a_max=healthy_dynamic_range,
+    )
+    if cfs is None:
+        return threshold_at_freq, dynamic_range_at_freq
+    threshold_at_cfs = np.interp(
+        x=cfs,
+        xp=freq,
+        fp=threshold_at_freq,
+    )
+    dynamic_range_at_cfs = np.interp(
+        x=cfs,
+        xp=freq,
+        fp=dynamic_range_at_freq,
+    )
+    return threshold_at_cfs, dynamic_range_at_cfs
