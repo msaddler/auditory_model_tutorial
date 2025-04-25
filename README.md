@@ -1,4 +1,4 @@
-# Tutorial: auditory modeling in PyTorch
+# Auditory modeling in PyTorch
 
 This tutorial aims to introduce basic auditory modeling in PyTorch, a machine learning framework for the Python programming language. Some reasons to consider building auditory models in PyTorch include:
 
