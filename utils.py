@@ -43,16 +43,14 @@ def logspace(start, stop, num):
 
 def freq2erb(freq):
     """
-    Convert frequency in Hz to ERB-number.
-    Same as `freqtoerb.m` in the AMT.
+    Convert frequency in Hz to ERB-number. Same as `freqtoerb.m` in the AMT.
     """
     return 9.2645 * np.sign(freq) * np.log(1 + np.abs(freq) * 0.00437)
 
 
 def erb2freq(erb):
     """
-    Convert ERB-number to frequency in Hz.
-    Same as `erbtofreq.m` in the AMT.
+    Convert ERB-number to frequency in Hz. Same as `erbtofreq.m` in the AMT.
     """
     return (1.0 / 0.00437) * np.sign(erb) * (np.exp(np.abs(erb) / 9.2645) - 1)
 
@@ -648,8 +646,8 @@ def map_audiogram_to_rate_level_parameters(
     `healthy_dynamic_range`. If a list of characteristic
     frequencies (`cfs`) is provided, this function returns
     thresholds and dynamic ranges linearly interpolated at
-    those cfs. If not, the function returns thresholds and
-    dynamic ranges at the audiogram frequencies.
+    those `cfs`. If not, the function returns thresholds
+    and dynamic ranges at the audiogram frequencies.
     """
     dbhl = np.asarray(dbhl).reshape([-1])
     threshold_at_freq = np.clip(
