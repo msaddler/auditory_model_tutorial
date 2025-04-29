@@ -86,5 +86,6 @@ def ihc_lowpass_filter_fir(sr, fir_dur, cutoff=3e3, order=7):
         fir[n] = ihc[order]
     fir = fir * scipy.signal.windows.hann(n_taps)
     fir = resample(fir)
+    fir[fir < 0] = 0
     fir = fir / fir.sum()
     return fir
